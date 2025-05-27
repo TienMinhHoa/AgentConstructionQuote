@@ -123,7 +123,7 @@ class AgentReadBluePrint:
         response = await self.model_with_structured_output.ainvoke(
             [HumanMessage(content=state["messages"][-1].content)]
         )
-        
+        print(response)
         return {"final_response": response}
 
 

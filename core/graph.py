@@ -1,5 +1,6 @@
 from typing import cast
-
+import sys
+sys.path.insert(-1,"/home/hoatien/hoa/agent_construction_quote/core")
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
