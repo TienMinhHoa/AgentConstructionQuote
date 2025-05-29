@@ -10,6 +10,7 @@ from agents.agent_read_blueprint import AgentState
 from agents.agent_read_blueprint import AgentReadBluePrint
 
 
+
 class OverallState(AgentState):
     output: str
 
@@ -33,13 +34,26 @@ class RootGraph:
     async def chat(self, request):
         response = await self.graph.ainvoke(input = {"messages":[("human",request)]})
         return response
+    
+    async def stream_chat(self,request):
+        try:
+            async for token, _ in self.graph.astream(
+                {"messages":[("human",request)]}, stream_mode="messages"
+            ):
+                try:
+                    print("tokennnnnnnnnnnnnnnnnnnnnnn", token)
+                    yield token.content
+                except Exception as token_error:
+                    continue
 
-
+        except Exception as e:
+            print(e)
+            raise e
 
 
 async def main():
     a = RootGraph()
-    b = await a.chat("describe the image in this link? https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg")
+    b = await a.stream_chat("describe the image in this link? https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg")
     # return b
 import asyncio
 

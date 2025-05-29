@@ -13,7 +13,7 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage,ToolMessage, AIMessage, SystemMessage
 from tools.file_handdle_tools import encode_image_from_url
 import asyncio
-import grpc
+from system_prompt.read_blue_print_prompt import *
 load_dotenv()
 # llm = ChatOpenAI(model = 'gpt-4o-mini')
 @tool
@@ -36,6 +36,15 @@ def handdle_links(
     Recieve an url of a image and process the request of user
     """
 
+@tool
+def analyze_image(
+    url: Annotated[str, "The url links to the resource that \
+                            Agent need to handdle",]
+):
+    """
+    Recieve an url of a image and analyze it first
+    """
+    
 
 class WeatherResponse(BaseModel):
     """Respond to the user with this"""
@@ -44,6 +53,9 @@ class WeatherResponse(BaseModel):
     category: list[str] = Field(
         description="Name of category"
     )
+    amount: list[int] = Field(description="The amount of the category")
+    size: list[str] = Field(description="The size of the category")
+    material: list[str] = Field(description="the material of the category")
     cost: list[int] = Field(description="The cost of category")
 
 
@@ -54,45 +66,55 @@ class AgentReadBluePrint:
     
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
-                temperature=0,
+                model="gemini-2.5-flash-preview-05-20",
+                temperature=0.4,
                 max_retries=1,
             )
-        self.tools = [get_weather,handdle_links]
+        # self.llm = ChatOpenAI(model = 'gpt-4o-mini')
+        self.tools = [handdle_links]
         self.model_with_tools = self.llm.bind_tools(self.tools)
         self.model_with_structured_output = self.llm.with_structured_output(WeatherResponse)
-        self.initailize()
+        self.initialize()
     
-    def initailize(self):
+    def initialize(self):
         workflow = StateGraph(AgentState)
 
         workflow.add_node("agent", self.call_model)
         workflow.add_node("respond", self.respond)
         workflow.add_node("file_process",self.file_process_node)
+        workflow.add_node("analyze",self.analyze_blueprint_node)
         # workflow.add_node("tools", ToolNode(tools))
 
         workflow.set_entry_point("agent")
-
+        workflow.add_edge("file_process", "analyze")
         workflow.add_conditional_edges(
             "agent",
             self.route,
             ["file_process","agent","respond",END]
         )
-
-        # workflow.add_edge("tools", "agent")
-        workflow.add_edge("file_process","respond")
+        workflow.add_edge("analyze","agent")
         workflow.add_edge("respond", END)
         self.agent_read_blueprint_graph = workflow.compile()
 
     async def call_model(self,state: AgentState):
-        system_message = f"""
-                            Your are an assistant that can help user analyze image, use these tools: {self.tools}
-                        """
         response = await self.model_with_tools.ainvoke([
-            SystemMessage(content = system_message),
+            SystemMessage(content = SYSTEM_PROMPT),
             *state["messages"]
         ],)
         return {"messages": [response]}
+
+    async def analyze_blueprint_node(self, state: AgentState):
+        response = await self.model_with_tools.ainvoke(
+            [
+                SystemMessage(content = ANALYZE_PROMPT),
+                *state["messages"]
+            ]
+        )
+        content = f"Đây là định hướng của bản báo giá lần này: {response.content}."
+        state["messages"].append(HumanMessage(content = content))
+        print("This is analyze ########",response)
+        return state
+        
 
     async def file_process_node(self,state:AgentState):
         url_file = state["messages"][-1].tool_calls[0]["args"]["url"]
@@ -123,7 +145,7 @@ class AgentReadBluePrint:
         response = await self.model_with_structured_output.ainvoke(
             [HumanMessage(content=state["messages"][-1].content)]
         )
-        print(response)
+        print(f"########## formating##########\n {response}\n #####################\n")
         return {"final_response": response}
 
 
@@ -137,7 +159,9 @@ class AgentReadBluePrint:
                 if tool_name in ["handdle_links", "get_weather"]:
                     if tool_name == "handdle_links":
                         return "file_process"
-
+            if isinstance(messages[-3], ToolMessage):
+                print("\n ############ analyze finish #################\n")
+                return "respond"
         if messages and isinstance(messages[-1], ToolMessage):
             return "agent"
         
@@ -148,11 +172,12 @@ class AgentReadBluePrint:
 
 async def main():
     agent = AgentReadBluePrint()
-    a = await agent.agent_read_blueprint_graph.ainvoke(input={"messages": [("human", "describe the image in this link? https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg")]})
+    a = await agent.agent_read_blueprint_graph.ainvoke(input={"messages": [("human", "describe the image in this link?"
+    " https://heli.com.vn/wp-content/uploads/2024/08/ban-ve-van-phong-lam-viec-voi-day-du-cac-khong-gian-chuc-nang.jpg")]})
     return a
 
 if __name__ == "__main__":
     import asyncio
-    url = "https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg"
+    url = "https://heli.com.vn/wp-content/uploads/2024/08/ban-ve-van-phong-lam-viec-voi-day-du-cac-khong-gian-chuc-nang.jpg"
     a = asyncio.run(main())
     print("response",a)

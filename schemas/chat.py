@@ -12,7 +12,11 @@ class WeatherResponse(BaseModel):
     category: list[str] = Field(
         description="Name of category"
     )
+    amount: list[int] = Field(description="The amount of the category")
+    size: list[str] = Field(description="The size of the category")
+    material: list[str] = Field(description="the material of the category")
     cost: list[int] = Field(description="The cost of category")
+
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint.
@@ -28,4 +32,15 @@ class ChatResponse(BaseModel):
 class Request(BaseModel):
     request:str
 
+
+class StreamResponse(BaseModel):
+    """Response model for streaming chat endpoint.
+
+    Attributes:
+        content: The content of the current chunk.
+        done: Whether the stream is complete.
+    """
+
+    content: str = Field(default="", description="The content of the current chunk")
+    done: bool = Field(default=False, description="Whether the stream is complete")
 

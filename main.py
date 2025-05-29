@@ -53,11 +53,6 @@ async def root(request: Request):
 
 @app.get("/health")
 async def health_check(request: Request) -> Dict[str, Any]:
-    """Health check endpoint with environment-specific information.
-
-    Returns:
-        Dict[str, Any]: Health status information
-    """
 
     # Check database connectivity
     response = {
