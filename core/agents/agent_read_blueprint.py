@@ -16,16 +16,7 @@ import asyncio
 from system_prompt.read_blue_print_prompt import *
 load_dotenv()
 # llm = ChatOpenAI(model = 'gpt-4o-mini')
-@tool
-def get_weather(city: Literal["nyc", "sf"]):
-    """Use this to get weather information."""
-    if city == "nyc":
-        return "It is cloudy in NYC, with 5 mph winds in the North-East direction and a temperature of 70 degrees"
-    elif city == "sf":
-        return "It is 75 degrees and sunny in SF, with 3 mph winds in the South-East direction"
-    else:
-        raise AssertionError("Unknown city")
-    
+
 @tool
 def handdle_links(
     url: Annotated[str, "The url links to the resource that \
@@ -44,7 +35,14 @@ def analyze_image(
     """
     Recieve an url of a image and analyze it first
     """
-    
+
+@tool
+def format_repond(
+    message: Annotated[str,"The content of reponse of agent that need to be reformated"]
+):
+    """
+    Format the response of agent to json format
+    """
 
 class WeatherResponse(BaseModel):
     """Respond to the user with this"""
@@ -55,9 +53,10 @@ class WeatherResponse(BaseModel):
     )
     amount: list[int] = Field(description="The amount of the category")
     size: list[str] = Field(description="The size of the category")
+    unit: list [str] = Field(description="The unit to measure size")
     material: list[str] = Field(description="the material of the category")
     cost: list[int] = Field(description="The cost of category")
-
+    location: list[str] = Field(description="The location of that category belongs to")
 
 class AgentState(MessagesState):
     final_response: WeatherResponse
@@ -71,7 +70,7 @@ class AgentReadBluePrint:
                 max_retries=1,
             )
         # self.llm = ChatOpenAI(model = 'gpt-4o-mini')
-        self.tools = [handdle_links]
+        self.tools = [handdle_links, format_repond]
         self.model_with_tools = self.llm.bind_tools(self.tools)
         self.model_with_structured_output = self.llm.with_structured_output(WeatherResponse)
         self.initialize()
@@ -83,17 +82,17 @@ class AgentReadBluePrint:
         workflow.add_node("respond", self.respond)
         workflow.add_node("file_process",self.file_process_node)
         workflow.add_node("analyze",self.analyze_blueprint_node)
-        # workflow.add_node("tools", ToolNode(tools))
 
         workflow.set_entry_point("agent")
         workflow.add_edge("file_process", "analyze")
+        
         workflow.add_conditional_edges(
             "agent",
             self.route,
             ["file_process","agent","respond",END]
         )
         workflow.add_edge("analyze","agent")
-        workflow.add_edge("respond", END)
+        workflow.add_edge("respond", "agent")
         self.agent_read_blueprint_graph = workflow.compile()
 
     async def call_model(self,state: AgentState):
@@ -142,29 +141,37 @@ class AgentReadBluePrint:
 
 
     async def respond(self,state: AgentState):
+        content = state["messages"][-1].tool_calls[0]["args"]["message"]
+        print(content)
         response = await self.model_with_structured_output.ainvoke(
-            [HumanMessage(content=state["messages"][-1].content)]
+            [HumanMessage(content=content)]
         )
         print(f"########## formating##########\n {response}\n #####################\n")
-        return {"final_response": response}
+        state["final_response"] = response
+        tool_message = ToolMessage(
+            content= response,
+            tool_call_id=state["messages"][-1].tool_calls[0]["id"]
+        )
+        state["messages"].append(tool_message)
+        # breakpoint()
+        return state
 
 
     def route(self,state: AgentState):
         messages = state.get("messages", [])
         if messages and isinstance(messages[-1], AIMessage):
             ai_message = cast(AIMessage, messages[-1])
-            print("True")
             if ai_message.tool_calls:
                 tool_name = ai_message.tool_calls[0]["name"]
-                if tool_name in ["handdle_links", "get_weather"]:
+                if tool_name in ["handdle_links", "format_repond"]:
                     if tool_name == "handdle_links":
                         return "file_process"
-            if isinstance(messages[-3], ToolMessage):
-                print("\n ############ analyze finish #################\n")
-                return "respond"
+                    if tool_name == "format_repond":
+                        return "respond"
         if messages and isinstance(messages[-1], ToolMessage):
             return "agent"
         
+        # print(f"####### This is final stae ############## \n {state} \n End of final state################")
         return END
 
 
@@ -172,8 +179,8 @@ class AgentReadBluePrint:
 
 async def main():
     agent = AgentReadBluePrint()
-    a = await agent.agent_read_blueprint_graph.ainvoke(input={"messages": [("human", "describe the image in this link?"
-    " https://heli.com.vn/wp-content/uploads/2024/08/ban-ve-van-phong-lam-viec-voi-day-du-cac-khong-gian-chuc-nang.jpg")]})
+    a = await agent.agent_read_blueprint_graph.ainvoke(input={"messages": [("human", "Lên báo giá bản vẽ này "
+    "https://heli.com.vn/wp-content/uploads/2024/08/ban-ve-van-phong-lam-viec-voi-day-du-cac-khong-gian-chuc-nang.jpg")]})
     return a
 
 if __name__ == "__main__":

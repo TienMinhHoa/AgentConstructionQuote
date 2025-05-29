@@ -5,6 +5,7 @@ streaming chat, message history management, and chat history clearing.
 """
 
 from prometheus_client import Counter, Histogram, Gauge
+from urllib.parse import urlparse
 llm_stream_duration_seconds = Histogram(
     "llm_stream_duration_seconds",
     "Time spent processing LLM stream inference",
@@ -42,7 +43,7 @@ async def chat(
     try:
 
         result = await agent.chat(
-            user_request.request
+            user_request
         )
         if "final_response" in result.keys():
             response = result["final_response"].dict()
@@ -51,7 +52,11 @@ async def chat(
             response = {
                 "STT":[],
                 "category":[],
-                "cost":[]
+                "cost":[],
+                "size":[],
+                "material":[],
+                "amount": [],
+                "location": []
             }
 
         return ChatResponse(messages=result["messages"][-1].content, data = WeatherResponse(**response))
@@ -85,4 +90,44 @@ async def stream_chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/analyze_image",status_code=status.HTTP_200_OK)
+async def analyze_image(
+    user_request:Request
+):
+    def is_valid_url(url: str) -> bool:
+        if ".jpg" not in url:
+            return False
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except ValueError:
+            return False
+        
+    
+    try:
+        if is_valid_url(user_request.request) is False:
+            return ChatResponse(messages="The URL is not valid")
+        print(user_request.request)
+        request = f"đây là link 1 ảnh bản vẽ kỹ thuật, bạn hãy phân tích kỹ lưỡng," 
+        f"chính xác các thành phần trong đây và dự toán báo giá cho tôi, url: {user_request.request}"
+        user_request.request = request
+        result = await agent.chat(
+            user_request
+        )
+        if "final_response" in result.keys():
+            response = result["final_response"].dict()
+            print(response)
+        else:
+            response = {
+                "STT":[],
+                "category":[],
+                "cost":[],
+                "size":[],
+                "material":[],
+                "amount": [],
+                "location": []
+            }
 
+        return ChatResponse(messages=result["messages"][-1].content, data = WeatherResponse(**response))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

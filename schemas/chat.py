@@ -4,6 +4,7 @@ from pydantic import (
     Field,
     field_validator,
 )
+from typing import Optional
 
 class WeatherResponse(BaseModel):
     """Respond to the user with this"""
@@ -14,8 +15,10 @@ class WeatherResponse(BaseModel):
     )
     amount: list[int] = Field(description="The amount of the category")
     size: list[str] = Field(description="The size of the category")
+    unit: list [str] = Field(description="The unit to measure size")
     material: list[str] = Field(description="the material of the category")
     cost: list[int] = Field(description="The cost of category")
+    location: list[str] = Field(description="The location of that category belongs to")
 
 
 class ChatResponse(BaseModel):
@@ -26,11 +29,12 @@ class ChatResponse(BaseModel):
     """
 
     messages: str = Field(..., description="Response of Agent")
-    data: WeatherResponse = Field(...,description="Data return by AI")
+    data: Optional[WeatherResponse] = None
 
 
 class Request(BaseModel):
     request:str
+    session_id: str
 
 
 class StreamResponse(BaseModel):

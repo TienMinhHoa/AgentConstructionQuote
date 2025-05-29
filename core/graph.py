@@ -1,44 +1,97 @@
 from typing import cast
+import os
 import sys
 sys.path.insert(-1,"/home/hoatien/hoa/agent_construction_quote/core")
+from psycopg_pool import AsyncConnectionPool
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END, START
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import MessagesState
 from agents.agent_read_blueprint import AgentState
 
 from agents.agent_read_blueprint import AgentReadBluePrint
 
-
+from dotenv import load_dotenv
+load_dotenv()
 
 class OverallState(AgentState):
     output: str
 
 class RootGraph:
-    # def __new__(cls):
-    #     if not hasattr(cls, 'instance'):
-    #         cls.instance = super(RootGraph, cls).__new__(cls)
-    #     return cls.instance
     
     def __init__(self):
-        workflow = StateGraph(OverallState)
-        graph1 = AgentReadBluePrint()
-        workflow.add_node("graph1", graph1.agent_read_blueprint_graph)
-        # memory = MemorySaver()
+        self._graph = None
+        self._connection_pool = None
+        print("Root Graph initalizing")
 
-        workflow.add_edge(START,"graph1")
-        workflow.add_edge("graph1",END)
+    async def _create_graph(self):
+        try:
+            workflow = StateGraph(OverallState)
+            graph1 = AgentReadBluePrint()
+            workflow.add_node("graph1", graph1.agent_read_blueprint_graph)
+            workflow.add_edge(START,"graph1")
+            workflow.add_edge("graph1",END)
 
-        self.graph = workflow.compile()
+            connection_pool = await self._get_connection_pool()
+
+            if connection_pool:
+                checkpointer = AsyncPostgresSaver(connection_pool)
+                await checkpointer.setup()
+            else:
+                checkpointer = None
+                raise Exception("Connection pool initialization failed")
+
+            self._graph = workflow.compile(checkpointer=checkpointer, name = "PARENT_GRAPH")
+        except Exception as graph_error:
+            raise graph_error
+        return self._graph
+    async def _get_connection_pool(self):
+        if self._connection_pool is None:
+            try:
+                max_size = int(os.getenv("POSTGRES_POOL_SIZE"))
+
+                self._connection_pool = AsyncConnectionPool(
+                    os.getenv("POSTGRES_URL",""),
+                    open = False,
+                    max_size = max_size,
+                    kwargs={
+                        "autocommit": True,
+                        "connect_timeout": 5,
+                        "prepare_threshold": None,                        
+                    },
+                )
+                await self._connection_pool.open()
+            except Exception as db_error:
+                print("error in initalize db")
+                raise db_error
+        print("Connection succes")
+        return self._connection_pool
     
     async def chat(self, request):
-        response = await self.graph.ainvoke(input = {"messages":[("human",request)]})
-        return response
+        try:
+            request = request.dict()
+            if self._graph is None:
+                self._graph = await self._create_graph()
+            user_prompt = request.get("request","")
+            session_id = request.get("session_id","default")
+            response = await self._graph.ainvoke(input = {"messages":[("human",user_prompt)]}, 
+                                                config = {"configurable": {"thread_id": session_id}})
+            # print(response)
+            return response
+        except Exception as e:
+            raise e
     
     async def stream_chat(self,request):
         try:
-            async for token, _ in self.graph.astream(
-                {"messages":[("human",request)]}, stream_mode="messages"
+            if self._graph is None:
+                self._graph = await self._creat_graph()
+            user_prompt = request.get("request","")
+            session_id = request.get("session_id","default")
+            async for token, _ in self._graph.astream(
+                {"messages":[("human",user_prompt)]},
+                config = {"configurable": {"thread_id": session_id}},
+                stream_mode="messages"
             ):
                 try:
                     print("tokennnnnnnnnnnnnnnnnnnnnnn", token)
