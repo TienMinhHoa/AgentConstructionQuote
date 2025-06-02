@@ -23,7 +23,8 @@ class RootGraph:
     def __init__(self):
         self._graph = None
         self._connection_pool = None
-        print("Root Graph initalizing")
+        # print("Root Graph initalizing")
+        # self._graph = self._create_graph()
 
     async def _create_graph(self):
         try:
@@ -68,9 +69,14 @@ class RootGraph:
         print("Connection succes")
         return self._connection_pool
     
+    async def get_state_graph(self,session_id):
+        config = {"configurable": {"thread_id": session_id}}
+        if self._graph is not None:
+            return await self._graph.aget_state(config)
+        return None
+    
     async def chat(self, request):
         try:
-            request = request.dict()
             if self._graph is None:
                 self._graph = await self._create_graph()
             user_prompt = request.get("request","")
@@ -85,7 +91,7 @@ class RootGraph:
     async def stream_chat(self,request):
         try:
             if self._graph is None:
-                self._graph = await self._creat_graph()
+                self._graph = await self._create_graph()
             user_prompt = request.get("request","")
             session_id = request.get("session_id","default")
             async for token, _ in self._graph.astream(
@@ -106,7 +112,12 @@ class RootGraph:
 
 async def main():
     a = RootGraph()
-    b = await a.stream_chat("describe the image in this link? https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg")
+    session = "1"
+    b = await a.chat({"request":"Lên báo giá bản vẽ này "
+    "https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong-lam-viec.jpg",
+                            "session_id":session})
+    o = await a.get_state_graph(session)
+    print(f"################## \n {o.values["final_response"]}\n ###########")
     # return b
 import asyncio
 
@@ -114,6 +125,7 @@ if __name__=="__main__":
     url = "https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg"
     try:
         a = asyncio.run(main())
+
     except Exception as e:
         print(e)
 

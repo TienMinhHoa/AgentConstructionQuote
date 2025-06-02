@@ -31,6 +31,7 @@ async def encode_image_from_url(url: str):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
+            print("request image sucess")
             response.raise_for_status()
             image_data = response.content
             return base64.b64encode(image_data).decode("utf-8")

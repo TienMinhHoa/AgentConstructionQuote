@@ -41,7 +41,7 @@ async def chat(
     user_request: Request,
 ):
     try:
-
+        user_request = user_request.model_dump()
         result = await agent.chat(
             user_request
         )
@@ -68,18 +68,22 @@ async def chat(
 async def stream_chat(
     user_request: Request
 ):
+    user_request = user_request.model_dump()
     try:
         async def event_generator():
             try:
+                
                 full_response = ""
                 with llm_stream_duration_seconds.labels(model="gemini-flash-2.5").time():
                     async for chunk in agent.stream_chat(
-                        user_request.request
+                        user_request
                     ):
                         full_response += chunk
                         response = StreamResponse(content=chunk, done=False)
                         yield f"data: {json.dumps(response.model_dump())}\n\n"
-                    
+                    json_data = await agent.get_state_graph(user_request.get('session_id','default'))
+                    content = StreamResponse(content=f"```json```\n{json_data.values["final_response"]}\n```json```", done=False)
+                    yield f"data: {json.dumps(content.model_dump())}\n\n"
                     final_response = StreamResponse(content="", done=True)
                     yield f"data: {json.dumps(final_response.model_dump())}\n\n"
             except Exception as e:

@@ -10,6 +10,7 @@ from langchain.tools import tool
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import ToolNode
+from langgraph.types import interrupt
 from langchain_core.messages import HumanMessage,ToolMessage, AIMessage, SystemMessage
 from tools.file_handdle_tools import encode_image_from_url
 import asyncio
@@ -18,22 +19,12 @@ load_dotenv()
 # llm = ChatOpenAI(model = 'gpt-4o-mini')
 
 @tool
-def handdle_links(
-    url: Annotated[str, "The url links to the resource that \
-                            Agent need to handdle",],
-    user_request: Annotated[str, "The user's request"]
-):
-    """
-    Recieve an url of a image and process the request of user
-    """
-
-@tool
-def analyze_image(
+def read_images(
     url: Annotated[str, "The url links to the resource that \
                             Agent need to handdle",]
 ):
     """
-    Recieve an url of a image and analyze it first
+    This tool is used for reading image of user
     """
 
 @tool
@@ -66,11 +57,11 @@ class AgentReadBluePrint:
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash-preview-05-20",
-                temperature=0.4,
+                temperature=0.1,
                 max_retries=1,
             )
         # self.llm = ChatOpenAI(model = 'gpt-4o-mini')
-        self.tools = [handdle_links, format_repond]
+        self.tools = [read_images, format_repond]
         self.model_with_tools = self.llm.bind_tools(self.tools)
         self.model_with_structured_output = self.llm.with_structured_output(WeatherResponse)
         self.initialize()
@@ -96,8 +87,12 @@ class AgentReadBluePrint:
         self.agent_read_blueprint_graph = workflow.compile()
 
     async def call_model(self,state: AgentState):
+        context = ""
+        for tool in self.tools:
+            context+=f"{tool.name}, description; {tool.description}\n"
+        print(context)
         response = await self.model_with_tools.ainvoke([
-            SystemMessage(content = SYSTEM_PROMPT),
+            SystemMessage(content = SYSTEM_PROMPT.format(context = context)),
             *state["messages"]
         ],)
         return {"messages": [response]}
@@ -110,19 +105,30 @@ class AgentReadBluePrint:
             ]
         )
         content = f"Đây là định hướng của bản báo giá lần này: {response.content}."
+        # humane_response = interrupt(  
+        #     f"Trying to call `book_hotel` with args "
+        #     "Please approve or suggest edits."
+        # )
+        # if humane_response["type"] == "accept":
+        #     pass
+        # elif humane_response["type"] == "edit":
+        #     print("################ edit################### \n")
+        #     # response = response.replace("")
         state["messages"].append(HumanMessage(content = content))
-        print("This is analyze ########",response)
+        
+        print("This is analyze ######## \n",response)
         return state
         
 
     async def file_process_node(self,state:AgentState):
+        print("#################\n file processing \n ##############")
         url_file = state["messages"][-1].tool_calls[0]["args"]["url"]
-        user_request = state["messages"][-1].tool_calls[0]["args"]["user_request"]
+        # user_request = state["messages"][-1].tool_calls[0]["args"]["user_request"]
         base64_image = await encode_image_from_url(url_file)
 
         message = HumanMessage(
         content=[
-            {"type": "text", "text": user_request},
+            {"type": "text", "text": "Đọc bản vẽ này cho tôi "},
             {
                 "type": "image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
@@ -149,7 +155,7 @@ class AgentReadBluePrint:
         print(f"########## formating##########\n {response}\n #####################\n")
         state["final_response"] = response
         tool_message = ToolMessage(
-            content= response,
+            content= "Đã format lại kết quả",
             tool_call_id=state["messages"][-1].tool_calls[0]["id"]
         )
         state["messages"].append(tool_message)
@@ -163,8 +169,8 @@ class AgentReadBluePrint:
             ai_message = cast(AIMessage, messages[-1])
             if ai_message.tool_calls:
                 tool_name = ai_message.tool_calls[0]["name"]
-                if tool_name in ["handdle_links", "format_repond"]:
-                    if tool_name == "handdle_links":
+                if tool_name in ["read_images", "format_repond"]:
+                    if tool_name == "read_images":
                         return "file_process"
                     if tool_name == "format_repond":
                         return "respond"
@@ -185,6 +191,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
-    url = "https://heli.com.vn/wp-content/uploads/2024/08/ban-ve-van-phong-lam-viec-voi-day-du-cac-khong-gian-chuc-nang.jpg"
     a = asyncio.run(main())
     print("response",a)
