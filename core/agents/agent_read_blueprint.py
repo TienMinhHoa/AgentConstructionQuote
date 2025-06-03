@@ -32,11 +32,11 @@ def format_repond(
     message: Annotated[str,"The content of reponse of agent that need to be reformated"]
 ):
     """
-    Format the response of agent to json format
+    Format the information about the quotation
     """
 
 class WeatherResponse(BaseModel):
-    """Respond to the user with this"""
+    """Format the information of category in the quotation. Donot format the response of agent to user"""
 
     STT: list[int] = Field(description="The number id of category")
     category: list[str] = Field(
@@ -90,7 +90,7 @@ class AgentReadBluePrint:
         context = ""
         for tool in self.tools:
             context+=f"{tool.name}, description; {tool.description}\n"
-        print(context)
+        # print(context)
         response = await self.model_with_tools.ainvoke([
             SystemMessage(content = SYSTEM_PROMPT.format(context = context)),
             *state["messages"]
@@ -105,15 +105,6 @@ class AgentReadBluePrint:
             ]
         )
         content = f"Đây là định hướng của bản báo giá lần này: {response.content}."
-        # humane_response = interrupt(  
-        #     f"Trying to call `book_hotel` with args "
-        #     "Please approve or suggest edits."
-        # )
-        # if humane_response["type"] == "accept":
-        #     pass
-        # elif humane_response["type"] == "edit":
-        #     print("################ edit################### \n")
-        #     # response = response.replace("")
         state["messages"].append(HumanMessage(content = content))
         
         print("This is analyze ######## \n",response)
@@ -148,14 +139,13 @@ class AgentReadBluePrint:
 
     async def respond(self,state: AgentState):
         content = state["messages"][-1].tool_calls[0]["args"]["message"]
-        print(content)
         response = await self.model_with_structured_output.ainvoke(
             [HumanMessage(content=content)]
         )
         print(f"########## formating##########\n {response}\n #####################\n")
         state["final_response"] = response
         tool_message = ToolMessage(
-            content= "Đã format lại kết quả",
+            content= f"Đã format lại kết quả , bạn hãy thông báo đến người dùng đi ",
             tool_call_id=state["messages"][-1].tool_calls[0]["id"]
         )
         state["messages"].append(tool_message)

@@ -56,7 +56,8 @@ async def chat(
                 "size":[],
                 "material":[],
                 "amount": [],
-                "location": []
+                "location": [],
+                "unit":[]
             }
 
         return ChatResponse(messages=result["messages"][-1].content, data = WeatherResponse(**response))
