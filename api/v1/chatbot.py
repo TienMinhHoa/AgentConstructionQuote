@@ -25,7 +25,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from core.graph import RootGraph
-from schemas.chat import (
+from schemas.server_reponse.chat import (
     ChatResponse,
     Request,
     WeatherResponse,
@@ -44,6 +44,33 @@ async def chat(
         user_request = user_request.model_dump()
         result = await agent.chat(
             user_request
+        )
+        print("This is be##########\n ", result)
+        if "final_response" in result.keys():
+            response = result["final_response"].dict()
+            print(response)
+        else:
+            response = {
+                "STT":[],
+                "category":[],
+                "cost":[],
+                "size":[],
+                "material":[],
+                "amount": [],
+                "location": [],
+                "unit":[]
+            }
+
+        return ChatResponse(messages=result["messages"][-1].content, data = WeatherResponse(**response))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/make_decision", response_model=ChatResponse,status_code=status.HTTP_200_OK)
+async def make_decision(decision: Request,):
+    try:
+        decision = decision.model_dump()
+        result = await agent.make_response(
+            decision
         )
         if "final_response" in result.keys():
             response = result["final_response"].dict()
@@ -111,13 +138,15 @@ async def analyze_image(
     
     try:
         if is_valid_url(user_request.request) is False:
+            print("#######not a url#######")
             return ChatResponse(messages="The URL is not valid")
-        print(user_request.request)
-        request = f"đây là link 1 ảnh bản vẽ kỹ thuật, bạn hãy phân tích kỹ lưỡng," 
-        f"chính xác các thành phần trong đây và dự toán báo giá cho tôi, url: {user_request.request}"
+        request = f"đây là link 1 ảnh bản vẽ kỹ thuật, bạn hãy phân tích kỹ lưỡng,\
+                        chính xác các thành phần trong đây và dự toán báo giá cho tôi, \
+                        url: {user_request.request}"
         user_request.request = request
+        print(user_request)
         result = await agent.chat(
-            user_request
+            user_request.model_dump()
         )
         if "final_response" in result.keys():
             response = result["final_response"].dict()

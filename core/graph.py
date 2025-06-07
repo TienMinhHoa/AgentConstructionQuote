@@ -9,6 +9,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import MessagesState
 from agents.agent_read_blueprint import AgentState
+from langgraph.types import Command
+import asyncio
 
 from agents.agent_read_blueprint import AgentReadBluePrint
 
@@ -47,6 +49,10 @@ class RootGraph:
         except Exception as graph_error:
             raise graph_error
         return self._graph
+    async def get_graph(self):
+        if self._graph is None:
+            return await self._create_graph()
+        return self._graph
     async def _get_connection_pool(self):
         if self._connection_pool is None:
             try:
@@ -75,6 +81,14 @@ class RootGraph:
             return await self._graph.aget_state(config)
         return None
     
+    async def make_response(self, decision):
+        if self._graph is None:
+            self._graph = await self._create_graph()
+        session_id = decision.get("session_id","default")
+        config = {"configurable": {"thread_id": session_id}}
+        a = await self._graph.ainvoke(Command(resume=decision.get("request","")), config=config)
+        return a
+    
     async def chat(self, request):
         try:
             if self._graph is None:
@@ -97,7 +111,7 @@ class RootGraph:
             async for token, _ in self._graph.astream(
                 {"messages":[("human",user_prompt)]},
                 config = {"configurable": {"thread_id": session_id}},
-                stream_mode="messages"
+                stream_mode="messages",
             ):
                 try:
                     print("tokennnnnnnnnnnnnnnnnnnnnnn", token)
@@ -109,19 +123,23 @@ class RootGraph:
             print(e)
             raise e
         
+# async def get_graph():
+#     graph = await RootGraph().get_graph()
+#     return graph
 
+# graph = asyncio.run(get_graph())
 
 
 async def main():
     a = RootGraph()
-    session = "1"
+    session = "test4"
     b = await a.chat({"request":"Lên báo giá bản vẽ này "
     "https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong-lam-viec.jpg",
                             "session_id":session})
     o = await a.get_state_graph(session)
     print(f"################## \n {o.values["final_response"]}\n ###########")
     # return b
-import asyncio
+
 
 if __name__=="__main__":
     url = "https://maisoninterior.vn/wp-content/uploads/2025/01/ban-ve-van-phong.jpg"

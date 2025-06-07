@@ -34,6 +34,9 @@ class ChatResponse(BaseModel):
 
 class Request(BaseModel):
     request:str
+    special_request: Optional[str] = None
+    material: Optional[str] = None
+    style: Optional[str] = None
     session_id: str
 
 
