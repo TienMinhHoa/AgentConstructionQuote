@@ -30,8 +30,6 @@ class ResponseOfStyle(BaseModel):
 
 class AgentAnalyzeInitState(MessagesState):
     response_of_room: ResponseForAgentAnalyzeInit
-    response_of_style: ResponseOfStyle
-    link_of_document: str = Field(description="the link of the document source")
     link_of_imnage: str = Field(description="The link of the blueprint")
 
 class AgentAnalyzeInit:
@@ -48,21 +46,6 @@ class AgentAnalyzeInit:
         self.tools = tools
         self.name = name
         self._graph = None
-            
-
-
-    async def extracted_knowledge(self, state: AgentAnalyzeInitState):
-        format_llm = self.llm.with_structured_output(ResponseOfStyle)
-        knowledge = """
-                    Phong cách có thể sử dụng: Cổ điển, Tân cổ điển,hiện đại.
-                    Vật liệu có thể sử dụng: gỗ
-                    """
-        
-        response = AIMessage(content = knowledge)
-        format_response = await format_llm.ainvoke([HumanMessage(content=knowledge)])
-        state["messages"].append(response)
-        state["response_of_style"] = format_response
-        return state
     
 
     async def extracted_room(self, state:AgentAnalyzeInitState):
@@ -82,11 +65,9 @@ class AgentAnalyzeInit:
         workflow = StateGraph(AgentAnalyzeInitState)
 
         workflow.add_node("room_count", self.extracted_room)
-        workflow.add_node("knowledge", self.extracted_knowledge)
 
         workflow.set_entry_point("room_count")
-        workflow.add_edge("room_count","knowledge")
-        workflow.add_edge("knowledge",END)
+        workflow.add_edge("room_count",END)
 
         graph = workflow.compile()
         return graph
